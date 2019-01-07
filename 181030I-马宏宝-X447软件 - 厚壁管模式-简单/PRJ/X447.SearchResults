@@ -1,0 +1,3 @@
+---- VendgetShowWaveNum Matches (2 in 2 files) ----
+ScarData.cpp (d:\x447):void CScarData::VendgetShowWaveNum(DataBuf *buf, int startch, int chnum, int startNum, int blocklen, int timelapes, int &reBuf)
+ScarData.h (d:\x447):	void VendgetShowWaveNum(DataBuf* buf, int startch, int chnum, int startNum, int blocklen, int timelapes, int& reBuf);

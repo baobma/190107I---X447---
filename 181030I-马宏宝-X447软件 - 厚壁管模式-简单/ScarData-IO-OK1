@@ -1,0 +1,1437 @@
+// ScarData.cpp: implementation of the CScarData class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#include "stdafx.h"
+#include "hustndt.h"
+#include "ScarData.h"
+#include "GobalData.h"
+#include "ShowSet.h"
+#include "math.h"
+#ifdef _DEBUG
+#undef THIS_FILE
+static char THIS_FILE[]=__FILE__;
+#define new DEBUG_NEW
+#endif
+
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+BOOL CScarData::alertflag = FALSE;
+char CScarData::alertSingle = 0;
+
+#ifdef AddYcord
+BOOL REN_DUANBU = FALSE; // TRUE 纵内在末端
+BOOL YANGGUAN_YES = FALSE;
+extern BOOL addOrDel;
+#endif
+
+// 纵向头部
+//static bool vheadcut = FALSE;
+static int vheadcutStartPt = 0;
+//纵向尾部
+//static bool vEndCut = FALSE;
+ int vEndCutTime =0;
+// 横向头部
+//static bool Hheadcut = FALSE;
+static int HheadcutStartPt = 0;
+//横向采集时，发生了偏移。
+static int xoffset=0,yoffset=0;
+// 横向尾部
+//static bool hEndCut = FALSE;
+ int hEndCutTime =0;
+static int  hlastAlermpt = 0;
+static int  vlastAlermpt = 0;
+ int recordXPt[10];
+ int recordYPt[10];
+ char indexAlert =0;
+ char indexAlert2 =0;
+BOOL xLostpt=FALSE;
+BOOL YLostpt=FALSE;
+int lastXpt[5];
+int lastYpt[5];
+CScarData::CScarData()
+{
+    	l82ScarStatus = L82SCARSTATUS_STOP;
+	suffix = "emt";
+	compress = 100;
+	needTrigger = FALSE;
+}
+
+CScarData::~CScarData()
+{
+
+}
+
+#ifdef AddYcord1
+void Check_duanbu()
+{
+	GobalData* g = GobalData::getGobalData();
+	AUTOSET& set = g->getAutoSet();
+	if( indexAlert > 4 && recordXPt[4] ==0) indexAlert = 4;
+	if( indexAlert > 3 && recordXPt[3] ==0) indexAlert = 3;
+	if( indexAlert2 > 4 && recordYPt[4] ==0) indexAlert2 = 4;	
+	if( indexAlert2 > 3 && recordYPt[3] ==0) indexAlert2 = 3;		
+	if( indexAlert2 > 2 && recordYPt[2] ==0) indexAlert2 = 2;	
+	
+	if( indexAlert >= 3 )
+		{// 横头部内伤，纵尾部内伤
+			if( recordXPt[1]>hEndCutTime*2/3 &&  recordXPt[0]<1000 )
+				{
+					REN_DUANBU = TRUE;		
+					YANGGUAN_YES = TRUE;
+					
+					if( indexAlert2 == 2 && recordYPt[1]<vEndCutTime/3)
+						{
+							recordYPt[2] = vEndCutTime;//+100;
+							indexAlert2=3;
+						}					
+					else if((indexAlert2 >= 3&& abs(recordYPt[indexAlert2-1]-vEndCutTime) >400 )&&  recordYPt[1]<vEndCutTime/3)
+					{						
+						recordYPt[indexAlert2-1] = vEndCutTime;//+100;
+						if(vEndCutTime - recordYPt[indexAlert2-2] < 400)
+							indexAlert2--;
+					}	
+					else if(indexAlert2 == 1)
+					{
+						;
+					}
+				}
+			else if(  recordXPt[1]<hEndCutTime/3 && recordXPt[2]>hEndCutTime*2/3 && indexAlert ==3)
+				{
+					REN_DUANBU = FALSE;		
+					YANGGUAN_YES = TRUE;
+					if( indexAlert2 == 2 && recordYPt[0]>vEndCutTime*2/3 )
+						{
+								recordYPt[2] = recordYPt[1];
+								recordYPt[1] = recordYPt[0];
+								recordYPt[0] = set.alertline3[2]+200;
+						}
+				}
+			else if( recordXPt[0]>hEndCutTime*2/3 &&  recordYPt[1]<vEndCutTime/3 )
+				{
+					REN_DUANBU = TRUE;		
+					YANGGUAN_YES = TRUE;
+					if( indexAlert2 == 2 )
+						{
+							recordYPt[2] = vEndCutTime;//+100;
+							indexAlert2=3;
+						}
+					
+				}
+			else if (recordXPt[indexAlert-2]>hEndCutTime*2/3 && recordYPt[1]<vEndCutTime/3 )
+				{
+					if( indexAlert2 == 2)
+					 	{
+					 		recordYPt[2] = vEndCutTime;//+100;
+							indexAlert2=3;
+						}
+					else if(indexAlert2 >= 3 && (recordYPt[2] <vEndCutTime*2/3 ||abs(recordYPt[indexAlert2-1]-vEndCutTime) >400 ))
+						{
+							recordYPt[indexAlert2-1] = vEndCutTime;//+100;
+						}
+				}
+			else if(recordXPt[0]<1100 && recordXPt[indexAlert-1]>hEndCutTime*2/3 && indexAlert2==2 && recordYPt[1]<vEndCutTime/3 )
+			{
+				recordYPt[2] = vEndCutTime;	indexAlert2=3;
+			}
+		}
+	else if( indexAlert == 2 )
+		{// 横头部内伤，纵尾部内伤
+			if( recordXPt[0]>hEndCutTime*2/3 &&  recordYPt[0]<2500 )
+				{
+					REN_DUANBU = TRUE;		
+					YANGGUAN_YES = TRUE;
+					recordXPt[2] = recordXPt[1];
+					recordXPt[1] = recordXPt[0];
+					recordXPt[0] = set.alertline3[2]+200;indexAlert=3;
+					if( indexAlert2 == 2 && recordYPt[1]<vEndCutTime/3)
+						{
+							recordYPt[2] = vEndCutTime;//+100;
+							indexAlert2=3;
+						}
+					else if(  indexAlert2 == 1 )
+						{
+							recordYPt[2] = vEndCutTime;
+							recordYPt[1] = vEndCutTime-4100;
+							indexAlert2=3;
+						}
+				}
+			else if(  recordXPt[1]<hEndCutTime/3 &&  recordXPt[0]<1000)
+				{
+					recordXPt[2] = hEndCutTime+100;indexAlert=3;
+					if( indexAlert2 == 2 && recordYPt[0]>vEndCutTime*2/3)
+						{
+							REN_DUANBU = FALSE;		
+							YANGGUAN_YES = TRUE;
+							recordYPt[2] = recordYPt[1];
+							recordYPt[1] = recordYPt[0];
+							recordYPt[0] = set.alertline3[2]+200;indexAlert2=3;
+						}				
+				}
+			else if( recordXPt[0] < hEndCutTime/3 && recordXPt[1] >hEndCutTime*2/3)
+				{
+					REN_DUANBU = TRUE;		
+					YANGGUAN_YES = TRUE;
+					recordXPt[2] = hEndCutTime+100;indexAlert=3;
+					if( indexAlert2 == 2 && recordYPt[1]<vEndCutTime/3 )
+					{
+						recordYPt[2] = vEndCutTime;//+100;
+						indexAlert2=3;
+					}
+					else if(indexAlert2 >= 3 && recordYPt[indexAlert2-1]  < vEndCutTime)
+						{
+							recordYPt[indexAlert2-1] = vEndCutTime;
+						}
+					else if( indexAlert2 ==2 && recordYPt[0] > vEndCutTime*2/3 )
+					{
+						REN_DUANBU = FALSE;		
+						YANGGUAN_YES = TRUE;
+						recordYPt[2] = recordYPt[1];
+						recordYPt[1] = recordYPt[0];
+						recordYPt[0] = set.alertline3[2]+200;indexAlert2=3;
+					}
+				}
+		
+		/*	if( recordYPt[1]<vEndCutTime/3 && recordYPt[1] >2000)
+				{
+					if( indexAlert2 == 2 && recordYPt[1]<vEndCutTime/3)
+						{
+							recordYPt[2] = vEndCutTime;//+100;
+							indexAlert2=3;
+						}
+					if(recordYPt[2]  < vEndCutTime )
+						{
+							recordYPt[2] = vEndCutTime;//+100;
+						}
+				}
+			else if(recordYPt[0]>vEndCutTime*2/3 && indexAlert2 == 2)
+				{
+					recordYPt[2] = recordYPt[1];
+					recordYPt[1] = recordYPt[0];
+					recordYPt[0] = 700;indexAlert2=3;
+				}*/
+		}
+	else if(indexAlert == 1 )
+		{
+			if( recordXPt[0] > hEndCutTime*2/3 && indexAlert2 == 2 && recordYPt[1]<vEndCutTime/3)
+				{
+					recordYPt[2] = vEndCutTime;//+100;
+					indexAlert2=3;
+					REN_DUANBU = TRUE;		
+					YANGGUAN_YES = TRUE;
+					if(abs(recordXPt[0] -hEndCutTime) <=200)
+						{
+							recordXPt[2] = recordXPt[0];
+							recordXPt[1] = recordXPt[2]-4100;
+							recordXPt[0]=set.alertline3[2]+200;
+						}
+				}
+			else if( recordXPt[0] < hEndCutTime/3 && recordYPt[0]>vEndCutTime*2/3 && indexAlert2 ==2 )
+				{
+					recordYPt[2] = recordYPt[1];
+					recordYPt[1] = recordYPt[0];
+					recordYPt[0] = set.alertline3[2]+200;indexAlert2=3;
+					REN_DUANBU = FALSE;		
+					YANGGUAN_YES = TRUE;
+				}
+		}
+}
+#endif
+
+BOOL CScarData::getDateFromCard()
+{
+	GobalData* g = GobalData::getGobalData();
+	AUTOSET& set = g->getAutoSet();
+	DataBuf* databuf = g->getDataBuf();
+	WORD** data = databuf->getDataPtr();
+	USB8221par& usb8221par = g->getUsb8221Par();
+	RbhUsb20* usbcard = (RbhUsb20*)(TestSampleControl::cardPtr);
+
+//	WaveShowStyle alertbyshow1 = set.showstyle[0];
+	WaveShowStyle alertbyshow2 = set.showstyle[2];
+	WORD* ADBuf = ((RbhUsb20*)(TestSampleControl::cardPtr))->getADbuf();
+	WORD* ADBuf1 = ((RbhUsb20*)(TestSampleControl::cardPtr))->getADbuf1();
+//	short* stdline = databuf->getStdPtr();
+	static int bit1num = 0;
+	static int bit2num = 0;
+	static int end1num = 0;
+	static int end2num = 0;
+	int nn = set.alertline3[5]+1;
+		int nnn = set.alertline3[6]+1;
+	BYTE DI1 = usbcard->GetDigitalInput();
+	BYTE DI2 = usbcard->GetDigitalInput1();
+	
+	int yMax = 2048;
+	int alerty1 = set.alertline[2]*yMax/100;
+//	int alerty2 = set.alertline[2]*yMax/100;
+	int y0 = 0;
+	int y1 =0;
+	int Bit1 = 16;//头四位给编码器使用。
+	int Bit2 = 16;
+	int Bit3 = 32;
+	int Bit4 = 32;
+	int len=0;
+// 直接开关量信号
+		Bit1 = Bit1&DI1;
+		Bit2 = Bit2&DI2;
+
+//电子阀信号		
+		Bit3 = Bit3&DI1;
+		Bit4 = Bit4&DI2;
+
+	
+	if(databuf->getdataLens(usb8221par.startch) >= g->getDataLen())
+	{
+		return FALSE;		
+	}
+// 现场只需要分横纵向喷标
+	switch(l82ScarStatus)
+	{
+	case L82SCARSTATUS_STOP:
+			if(Bit3 == 0  && Bit4 == 32)  
+				{
+					bit1num++;			
+				}
+				else
+				{
+					bit1num = 0; 
+				}
+				if(bit1num >= 2 ) 
+					{
+						memset(recordXPt,0,10*sizeof(int));
+						memset(recordYPt,0,10*sizeof(int));							
+						hEndCutTime = 0;vEndCutTime = 0;			
+						end1num =0; end2num=0;bit2num = 0; 
+						indexAlert=0;indexAlert2=0;											
+						bit1num= 0;hlastAlermpt = 0;vlastAlermpt = 0;
+						#ifdef AddYcord
+							xLostpt=FALSE;
+							YLostpt=FALSE;
+						#endif
+						l82ScarStatus =L82SCARSTATUS_HORIZONTAL;							
+						::SendMessage(g->Dlghandle,WM_NEW_MSG,NEWONE_NEXT,0);
+					}
+				return FALSE;
+		break;
+	case L82SCARSTATUS_HORIZONTAL:
+		{
+			if(Bit3== 0 && Bit4== 0  )     
+			{
+				bit2num++;	
+				if(bit2num > 2 )    //第二个触发
+				{					
+					bit2num = 0;//V_Start1=0;
+					l82ScarStatus = L82SCARSTATUS_BOTH;			
+				}
+			}			
+			len = databuf->getdataLens(4);
+			for(int i = 0; i < usb8221par.block;i++)
+			{
+				for(int j = usb8221par.startch; j < usb8221par.startch+usb8221par.channelnum; j++)
+				{						
+				//	data[j][len+i] = abs(ADBuf[(j-usb8221par.startch) + (i*usb8221par.channelnum) + 1])/16;
+					data[j][len+i] = abs(ADBuf[(j-usb8221par.startch) + (i*usb8221par.channelnum) + 1]-32767)/8;
+				}
+			}
+            //打标
+			if(len > set.alertline3[0] )
+				{
+					getShowWaveNum(databuf,4,63,len,usb8221par.block,set.timelapes[0],y0);
+					if( y0 > set.alertline[0]*yMax/100 )
+					{	
+					  if((hlastAlermpt+nn*usb8221par.block) <len)
+					   	{		
+						//	usbcard->SendDigitalOuputByNet(1,TRUE);// Sleep(1);
+						   usbcard->SendDigitalOuput(16,TRUE);
+					//		CScarData::alertflag = TRUE;
+					//		CScarData::alertSingle = 16;
+							hlastAlermpt = len;
+							recordXPt[indexAlert] =hlastAlermpt ;indexAlert++;
+					   	}
+					}
+				
+				}		
+			for(int j = usb8221par.startch; j < usb8221par.startch+usb8221par.channelnum; j++)
+				{
+					databuf->increaeDataLen(j,usb8221par.block);
+				}
+		}
+		break;
+	case L82SCARSTATUS_BOTH:
+	case L82SCARSTATUS_DEMARCATE:
+		{
+			if( Bit1 == 16 && hEndCutTime == 0/* && set.timelapes[6] > 0 */)
+				{
+					htck1 = databuf->getdataLens(10);
+					hEndCutTime = htck1;
+#if 0
+					if( HheadcutStartPt == 0 ) //记录下校样的长度
+							{
+						HheadcutStartPt = hEndCutTime;///bHead->xlength ;
+							}
+					else 
+						{
+							xoffset = HheadcutStartPt-hEndCutTime;
+							if( xoffset > 3000 ) //可能是规格变了。
+								xoffset = 0;	
+							else if( xoffset > 0 )//上次采集的数据完整
+								;
+							else //本次采集的数据完整
+								xoffset = 0;								
+						}	
+#endif
+				}
+		if( Bit1 == 16  && set.timelapes[6] > 0)
+				{
+					htck2= databuf->getdataLens(10); //::GetTickCount();//databuf->getdataLens(80);
+					if(( htck2- htck1 )> (set.timelapes[6]+xoffset))
+					{
+						htck1=0;end1num=0;
+						l82ScarStatus = L82SCARSTATUS_VERTICAL;						
+					}
+				}
+			else if( Bit3 == 32  && set.timelapes[6] == 0)   //第一个触发（反）
+				{					
+					end1num++;			
+					 if(end1num > 3 )    //第二个触发
+						{					
+							end1num = 0;//tck1 = 0;//	zxstart=0;
+							l82ScarStatus = L82SCARSTATUS_VERTICAL;
+						}	
+				}
+		
+			for(int i = 0; i < usb8221par.block;i++)
+			{
+				len = databuf->getdataLens(4);
+				for(int j = usb8221par.startch;j < usb8221par.startch+usb8221par.channelnum; j++)
+				{
+				//	int len = databuf->getdataLens(j);				
+				//	data[j][len+i] = abs(ADBuf[(j-usb8221par.startch) + (i*usb8221par.channelnum) + 1])/16;
+					data[j][len+i] = abs(ADBuf[(j-usb8221par.startch) + (i*usb8221par.channelnum) + 1]-32767)/8;
+				}
+				len = databuf->getdataLens(68);  
+				for( j = 68; j < 68+68; j++)
+				{ 
+				//	int len = databuf->getdataLens(j);    				        
+				//	data[j][len+i] = abs(ADBuf1[(j-68) + (i*usb8221par.channelnum) + 1])/16;
+					data[j][len+i] = abs(ADBuf1[(j-68) + (i*usb8221par.channelnum) + 1]-32767)/8;
+				}
+			}
+			getShowWaveNum(databuf,4,63,databuf->getdataLens(5),usb8221par.block,set.timelapes[0],y0);
+			if(  databuf->getdataLens(68) > set.alertline3[2] )
+				{
+					if( alertbyshow2 == WaveShowStyle_SimpleShow )
+						getShowWaveNum(databuf,72,63,databuf->getdataLens(74),usb8221par.block,set.timelapes[2],y1);//5-14
+				//	else if( WaveShowStyle_Differ == alertbyshow2 )
+				//		GetMinWaveNum(databuf,72,63,databuf->getdataLens(74),usb8221par.block,set.timelapes[2],y1);//5-14
+					else if( alertbyshow2 == WaveShowStyle_Difference )
+						{
+							for(int k = 72 ; k < 135 ;k++)
+								{
+									GetWaveNum(databuf,k,databuf->getdataLens(k),usb8221par.block,set.timelapes[2],y1);
+									if( (y1 > alerty1))
+										break;
+								}
+						}
+				}
+			// check 横向结束
+			if( (y0 > set.alertline[0]*yMax/100) && ((hlastAlermpt+nn*usb8221par.block) <databuf->getdataLens(4)))
+			{
+				//if(( hEndCutTime  == 0)|| (hEndCutTime+set.alertline3[1]+xoffset > databuf->getdataLens(5)) )
+			//	{
+				//	usbcard->SendDigitalOuputByNet(1,TRUE); //Sleep(1);
+					usbcard->SendDigitalOuput(16,TRUE);
+				//	CScarData::alertflag = TRUE;
+				//			CScarData::alertSingle = 16;
+					hlastAlermpt = databuf->getdataLens(4);
+					recordXPt[indexAlert] =hlastAlermpt ;indexAlert++;
+			//	}
+			}
+			if( y1 > set.alertline[2]*yMax/100)
+			{
+				 if(( vlastAlermpt ==0 )||((vlastAlermpt+nnn*usb8221par.block) < databuf->getdataLens(74))){
+					//去掉纵向信号头部
+					//	usbcard->SendDigitalOuputByNet(2,TRUE);// Sleep(1);
+					 usbcard->SendDigitalOuput2(16,TRUE);
+					//	CScarData::alertflag = TRUE;
+					//		CScarData::alertSingle = 32;
+						vlastAlermpt = databuf->getdataLens(74);
+						recordYPt[indexAlert2] =vlastAlermpt ;indexAlert2++;
+				 	}
+			}	
+			for(int j = usb8221par.startch; j < usb8221par.startch+usb8221par.channelnum*2; j++)
+			{
+				databuf->increaeDataLen(j,usb8221par.block);
+			}
+		}
+		break;
+#if 1
+	case L82SCARSTATUS_VERTICAL:
+		if(  Bit2 == 16 && vEndCutTime == 0 /*&& set.timelapes[7]>0*/)//纵向结束时，第三个灯提前给结束信号。
+		{
+		//	vEndCut = TRUE;	
+			vtck1 = databuf->getdataLens(80);
+			vEndCutTime = vtck1;
+#if 0
+			if( vheadcutStartPt == 0 ) //记录下校样的长度
+				{
+						vheadcutStartPt = vEndCutTime;///bHead->xlength ;
+				}
+					else 
+						{
+							yoffset = vheadcutStartPt-vEndCutTime;
+							if( yoffset > 3000 ) //可能是规格变了。
+								yoffset = 0;	
+							else if( yoffset > 0 )//上次采集的数据完整
+								;
+							else //本次采集的数据完整
+								yoffset = 0;								
+						}
+#endif
+		}	
+		if( Bit2 == 16  && set.timelapes[7] > 0)
+				{
+							vtck2= databuf->getdataLens(80); //::GetTickCount();//databuf->getdataLens(80);
+							if(( vtck2- vtck1 )> (set.timelapes[7]+yoffset))
+							{
+								end2num = 0;xoffset =0; yoffset= 0;vtck1=0;	
+								l82ScarStatus = L82SCARSTATUS_STOP;
+								::SendMessage(g->Dlghandle,WM_NEW_MSG,COMPLETE_THIS,0);
+								return FALSE;								
+							}
+				}
+		else if(  Bit4 ==32  && set.timelapes[7] == 0)   
+		{
+			end2num++;									
+			if(end2num  > 3)
+				{			
+					end2num = 0;xoffset =0; yoffset= 0;vtck1=0;	
+					l82ScarStatus = L82SCARSTATUS_STOP;
+					::SendMessage(g->Dlghandle,WM_NEW_MSG,COMPLETE_THIS,0);
+					return FALSE;								
+				}	
+
+		}
+		len = databuf->getdataLens(72);
+		for(int i = 0; i < usb8221par.block;i++)
+			{
+				for(int j = 68; j <136; j++)
+				{ 
+				//	int len = databuf->getdataLens(j);			  
+				//	data[j][len+i] = abs(ADBuf1[(j-68) + (i*usb8221par.channelnum) + 1])/16;
+					data[j][len+i] = abs(ADBuf1[(j-68) + (i*usb8221par.channelnum) + 1]-32767)/8;
+				}
+			}
+            //打标
+			if( alertbyshow2 == WaveShowStyle_SimpleShow )
+				getShowWaveNum(databuf,72,63,databuf->getdataLens(74),usb8221par.block,set.timelapes[2],y0);
+		//	else if( WaveShowStyle_Differ == alertbyshow2 )
+		//		GetMinWaveNum(databuf,72,63,databuf->getdataLens(74),usb8221par.block,set.timelapes[2],y0);//5-14
+			else if( alertbyshow2 == WaveShowStyle_Difference )
+				{
+					for(int k = 72 ; k < 135; k++)
+						{
+							GetWaveNum(databuf,k,databuf->getdataLens(k),usb8221par.block,set.timelapes[2],y0);
+							if( y0 > alerty1)
+								break;
+						}
+					
+				}
+			// 检测纵向结束
+			if( (y0   > set.alertline[2]*yMax/100)&& ( (vlastAlermpt +nnn*usb8221par.block) < databuf->getdataLens(74)))
+			{
+			//	if(vEndCutTime==0||(databuf->getdataLens(80)  <(vEndCutTime+ set.alertline3[3]+yoffset)))				
+			//	{
+				//	usbcard->SendDigitalOuputByNet(2,TRUE); //Sleep(1);
+					usbcard->SendDigitalOuput2(16,TRUE);
+				//	CScarData::alertflag = TRUE;
+				//			CScarData::alertSingle = 32;
+					vlastAlermpt =  databuf->getdataLens(74);
+					recordYPt[indexAlert2] =vlastAlermpt ;indexAlert2++;
+			//	}
+			}			
+		for(int j = 68; j < 136; j++)
+			{
+				databuf->increaeDataLen(j,usb8221par.block);
+			}
+		
+		break;
+	#endif
+	}
+	return TRUE;
+}
+
+BOOL CScarData::autoSampleFuc()
+{
+//	const int num = 1;//5;
+//	GobalData* g = GobalData::getGobalData();
+	RbhUsb20* usbcard = (RbhUsb20*)(TestSampleControl::cardPtr);
+//	AUTOSET set = g->getAutoSet();
+//	DataBuf* databuf = g->getDataBuf();
+//	static int bit1num = 0;
+//	static int bit2num = 0;
+//	static int end1num = 0;
+//	static int end2num = 0;
+	if(CScarData::alertflag == TRUE)
+	{
+	if( alertSingle == 32)
+		usbcard->SendDigitalOuput2(16,TRUE);	
+	else
+		usbcard->SendDigitalOuput(16,TRUE);
+//		usbcard->SendDigitalOuputByNet(CScarData::alertSingle,TRUE);  //采集卡数字口输出
+		CScarData::alertflag = FALSE;
+		CScarData::alertSingle = 0;
+	}
+	return FALSE;
+	#if 0
+	for(int i = 0; i < num; i++)
+	{
+	//	char DI = usbcard->GetDigitalInputByNet();
+		int Bit1 = 16;//头四位给编码器使用。
+		int Bit2 = 16;
+		int Bit3 = 32;
+		int Bit4 = 32;
+		BYTE DI1 = usbcard->GetDigitalInput();
+		BYTE DI2 = usbcard->GetDigitalInput1();
+// 直接开关量信号
+		Bit1 = Bit1&DI1;
+		Bit2 = Bit2&DI2;
+
+//电子阀信号		
+		Bit3 = Bit3&DI1;
+		Bit4 = Bit4&DI2;
+
+//任务循环15毫秒
+		switch(l82ScarStatus)
+		{
+		case L82SCARSTATUS_STOP:
+			{
+			/*	if(Bit1 == 0 )*/
+				if(Bit3 == 0  && Bit4 == 32)  
+				{
+					bit1num++;			
+				}
+				else
+				{
+					bit1num = 0; 
+				}
+				if(bit1num > num )   //第一个触发
+				{
+							bit1num = 0;
+							vheadcut = FALSE;vheadcutStartPt = 0;
+							Hheadcut = FALSE;HheadcutStartPt = 0;
+							vEndCut = FALSE;vEndCutTime = 0;
+							hEndCut = FALSE;hEndCutTime = 0;
+						//	hEndAlerm = TRUE;vEndAlerm = TRUE;
+							end1num= 0;end2num= 0;
+				                    l82ScarStatus =L82SCARSTATUS_HORIZONTAL;
+				                    ::SendMessage(g->Dlghandle,WM_NEW_MSG,NEWONE_NEXT,0);
+				}
+			}
+			break;
+		case L82SCARSTATUS_HORIZONTAL:   
+			{			
+				if(Bit3== 0  && Bit4== 0  )     
+				{
+					bit2num++;			
+				}
+				else
+				{
+					bit2num = 0; 
+				}
+				if(bit2num > num )    //第二个触发
+				{					
+					bit2num = 0;end1num = 0;//V_Start1=0;
+					l82ScarStatus = L82SCARSTATUS_BOTH;			
+				}
+			}
+			break;
+		case L82SCARSTATUS_BOTH:
+			{			
+		//		DataBuf* databuf = g->getDataBuf();
+
+				if( Bit1 == 16 && hEndCut == FALSE)
+					{
+						hEndCut = TRUE;
+						htck1 = databuf->getdataLens(10);
+						hEndCutTime = databuf->getdataLens(10);
+					}
+				if( Bit3 == 32  && Bit4 == 0)   //第一个触发（反）
+				{					
+					end1num++;						
+					//if(set.timelapes[6]>0&& end1num==2)
+					//	{
+					//		htck1 = databuf->getdataLens(10);// ::GetTickCount();					
+					//		hEndCutTime = databuf->getdataLens(10);
+					//		hEndCut = TRUE;					
+					//	}
+				}
+				else
+				{
+					end1num= 0;
+				}
+				if(end1num  > num && set.timelapes[6]>0)
+				{		
+					htck2= databuf->getdataLens(10); //::GetTickCount();//databuf->getdataLens(80);
+					if(( htck2- htck1 )>set.timelapes[6])
+						{
+							end1num = 0;htck1=0;
+							l82ScarStatus = L82SCARSTATUS_VERTICAL;						
+						}
+				}	
+				else if(end1num > num )    //第二个触发
+				{					
+					end1num = 0;//tck1 = 0;//	zxstart=0;
+					l82ScarStatus = L82SCARSTATUS_VERTICAL;
+				}	
+			}
+			break;
+		case L82SCARSTATUS_VERTICAL:
+			{
+			//	DataBuf* databuf = g->getDataBuf();
+			
+				if(  Bit2 == 16 && vEndCut == FALSE)//纵向结束时，第三个灯提前给结束信号。
+					{
+						vEndCut = TRUE;	
+						vtck1 = databuf->getdataLens(80);
+						vEndCutTime = databuf->getdataLens(80);
+						break;
+					}
+				if(  Bit4 ==32  && Bit3 == 32)   
+				{
+					end2num++;									
+				//	if(set.timelapes[7]>0&& end2num==4)
+				//		{
+				//			vtck1 = databuf->getdataLens(80);// ::GetTickCount();					
+				//			vEndCutTime = databuf->getdataLens(80);
+				//			vEndCut = TRUE;
+				//		}
+
+				}else
+				{
+					end2num = 0;
+				}				
+				
+				if(end2num  > num && set.timelapes[7]>0)
+				{		
+					vtck2= databuf->getdataLens(80); //::GetTickCount();//databuf->getdataLens(80);
+					if(( vtck2- vtck1 )>set.timelapes[7])
+						{
+							end2num = 0;vtck1=0;
+							l82ScarStatus = L82SCARSTATUS_STOP;
+							::SendMessage(g->Dlghandle,WM_NEW_MSG,COMPLETE_THIS,0);
+							return FALSE;								
+						}
+				}	
+				else if(end2num  > num)
+				{			
+					end2num = 0;vtck1=0;
+					l82ScarStatus = L82SCARSTATUS_STOP;
+					::SendMessage(g->Dlghandle,WM_NEW_MSG,COMPLETE_THIS,0);
+					return FALSE;								
+				}	
+
+			}
+			break;
+		case L82SCARSTATUS_DEMARCATE:
+			break;    
+		}
+	}
+	#endif
+	return FALSE;
+}
+
+void CScarData::DoReport(CListCtrl& list, BOOL doexcel)
+{
+	GobalData* g = GobalData::getGobalData();
+	AUTOSET set = g->getAutoSet();
+	float spic = 100*1000/32*60;
+	CString str;
+	if(doexcel == FALSE)
+	{
+		int nColumnCount = (list.GetHeaderCtrl())->GetItemCount();
+		
+		for (int i=0;i < nColumnCount;i++)
+		{
+			list.DeleteColumn(0);
+		}
+		list.DeleteAllItems();
+		if(g->dataHead.blocksum < 0)
+			return;
+		
+		list.InsertColumn(0,"信息  ",LVCFMT_LEFT,130,-1);
+		list.InsertColumn(1,"内容  ",LVCFMT_LEFT,130,-1);
+//		list.InsertColumn(2,"长度  ",LVCFMT_LEFT,80,-1);
+
+		list.InsertItem(0,"");
+		list.SetItemText(0,0,"文件名");
+		
+		list.InsertItem(1,"");
+		list.SetItemText(1,0,"检测日期");
+		
+		list.InsertItem(2,"");
+		list.SetItemText(2,0,"操作员");
+
+		list.InsertItem(3,"");
+		list.SetItemText(3,0,"规格");
+		
+		list.InsertItem(4,"");
+		list.SetItemText(4,0,"钢级");
+
+		list.InsertItem(5,"");
+		list.SetItemText(5,0,"壁厚");
+	
+		list.InsertItem(6,"");
+		list.SetItemText(6,0,"总根数");
+		
+		list.InsertItem(7,"");
+		list.SetItemText(7,0,"一级根数");
+
+		list.InsertItem(8,"");
+		list.SetItemText(8,0,"二级根数");
+
+		list.InsertItem(9,"");
+		list.SetItemText(9,0,"报废根数");
+		
+		
+		list.InsertItem(10,"");
+		list.SetItemText(10,0,"当前杆等级");
+		
+		if(g->getFilePtr() != NULL)
+		{
+			str.Format("%s",g->getWholeFileName());
+			list.SetItemText(0,1,str);
+
+			str.Format("%4d-%02d-%02d",g->dataHead.year,g->dataHead.month,g->dataHead.day);
+			list.SetItemText(1,1,str);
+
+			str.Format("%s",g->dataHead.Uoperator);
+			list.SetItemText(2,1,str);
+
+			str.Format("%s",g->dataHead.guige);
+			list.SetItemText(3,1,str);
+
+			str.Format("%s",g->dataHead.steel);
+			list.SetItemText(4,1,str);
+			
+			str.Format("%s",g->dataHead.ply);
+			list.SetItemText(5,1,str);
+
+			str.Format("%d",g->dataHead.blocksum);
+			list.SetItemText(6,1,str);
+
+// 			str.Format("%d",g->dataHead.blocksum);
+// 			list.SetItemText(0,1,str);
+//             str.Format("%0.2f m",g->dataHead.datasum*set.speed/spic);
+// 			list.SetItemText(0,2,str);
+
+			str.Format("%d",g->dataHead.goodsum2);
+			list.SetItemText(7,1,str);
+// 			str.Format("%0.2f m",g->dataHead.gooddatasum*set.speed/spic);
+// 			list.SetItemText(1,2,str);
+
+			str.Format("%d",g->dataHead.goodsum);
+			list.SetItemText(8,1,str);
+
+
+			str.Format("%d",g->dataHead.blocksum-(g->dataHead.goodsum2+g->dataHead.goodsum));
+			list.SetItemText(9,1,str);
+// 			str.Format("%0.2f m",(g->dataHead.datasum-g->dataHead.gooddatasum)*set.speed/spic);
+// 			list.SetItemText(2,2,str);
+			if((g->blockHead.good == TRUE)&&(g->blockHead.good2 == FALSE))
+				str.Format("二级");
+			else if(g->blockHead.good2 == TRUE)
+				str.Format("一级");
+			else
+				str.Format("报废");
+			list.SetItemText(10,1,str);
+// 			str.Format("%0.2f m",g->blockHead.blocksum*set.speed/spic);
+// 			list.SetItemText(8,2,str);
+		}
+
+		list.InsertItem(11,"");
+		list.SetItemText(11,0,"当前杆时间");
+		CString str;
+		str.Format("%02d点%02d分",(g->blockHead).hour,(g->blockHead).min);
+		list.SetItemText(11,1,str);
+
+//		list.InsertItem(5,"");
+//		list.SetItemText(5,0,"当前流水号");
+//		str.Format("%d",g->blockHead.sid<0?0:g->blockHead.sid);
+//		list.SetItemText(5,1,str);
+	}
+}
+
+void CScarData::DoDataBase()
+{
+
+}
+//int xneishang1,xneishang2;
+//bool neishangchek= FALSE;
+//bool neishangchek2= FALSE;
+char cutch[136];
+void CScarData::getShowWaveNum(DataBuf *buf, int ch, int startNum, int blocklen, int timelapes, int &reBuf)
+{
+	int max = -2048;
+	short* pars = buf->getParPtr();
+	short* stdline = buf->getStdPtr();
+	WORD** data = buf->getDataPtr();
+#if 0	
+	GobalData* g = GobalData::getGobalData();
+	AUTOSET& set = g->getAutoSet();
+	int  End_maxValue =2048*set.timelapes[5]/100;
+	extern BOOL showLengthRule;
+#endif
+	double z = double(pars[ch])/20; 
+
+	reBuf = 0;
+
+//	if( buf->getdataLens(ch) < 	2*blocklen )
+//		return;
+	
+	if( timelapes > startNum )
+		{
+			return ;
+		}
+		  
+	for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+	{
+		int y = abs(data[ch][i] - stdline[ch])*pow(10,z)/100;	
+		if(y > max)
+			max = y;	
+	}
+#if 0
+		if( showLengthRule == TRUE && End_maxValue >0 )
+		{
+			int max2 = -2048;
+			if( ch == 72 && startNum == 0 )
+				memset(cutch,0,136*sizeof(char));
+			if( startNum>= vEndCutTime+set.alertline[3]&& cutch[ch] != 1 && ch > 68)
+				{
+					for(int i = startNum+blocklen; i < startNum+3*blocklen; i++) 
+						{
+							int y = abs(data[ch][i] - stdline[ch])*pow(10,z)/100;
+							if( y > max2 )
+							max2 = y;
+						}	
+			
+					if( max > End_maxValue &&  max2 > End_maxValue )
+						{
+							cutch[ch] = 1;max =0;
+						}				
+				}
+			if(startNum> vEndCutTime+set.alertline[3]&&  cutch[ch] == 1&& ch > 68 )
+						max =0;
+		}
+#endif
+	reBuf = max >  2048 ? 2048 : max;
+#if 0
+	if( ch > 70  && vEndCutTime+set.alertline3[3] < startNum && vEndCutTime != 0 &&  ch % 8 > 3  )
+	{
+			reBuf =0;
+	}
+#endif
+}
+
+void CScarData::getShowWaveNum(DataBuf *buf, int startch, int chnum, int startNum, int blocklen, int timelapes, int &reBuf)
+{
+	int max = -2048;
+	short* pars = buf->getParPtr();
+	short* stdline = buf->getStdPtr();
+	WORD** data = buf->getDataPtr();
+#if 0	
+	GobalData* g = GobalData::getGobalData();
+	AUTOSET& set = g->getAutoSet();
+#endif	
+	reBuf = 0;
+//	if( buf->getdataLens(startch) < 2*blocklen )
+//		return;
+
+	if( timelapes > startNum )
+		{
+			return ;
+		}
+	for(int ch = startch; ch <= startch + chnum; ch++)
+	{
+		double z = double(pars[ch])/20; 		
+		for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+		{
+			int y = abs(data[ch][i] - stdline[ch])*pow(10,z)/100;
+			if(y > max)
+				max = y;
+		}		
+	}
+	reBuf = max >  2048 ? 2048 : max;
+#if 0
+	if( ch > 70  && vEndCutTime+set.alertline3[3] < startNum && vEndCutTime != 0 &&  ch % 8 > 3  )
+	{
+			reBuf =0;
+	}
+#endif
+
+//	max = max <  -2048 ? -2048 : max;
+//	reBuf = max;
+}
+
+
+void  CScarData::getShowWaveNum3(DataBuf *buf, int ch, int startNum, int blocklen,int &reBuf)
+{
+	int max = -2048;
+	short* pars = buf->getParPtr();
+	short* stdline = buf->getStdPtr();
+	WORD** data = buf->getDataPtr();
+	
+	reBuf = 0;
+	if( buf->getdataLens(ch) < 	2*blocklen )
+		return;
+
+	for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+	{
+		double z = double(pars[ch])/20; 
+		int y = (data[ch][i] - stdline[ch])*pow(10,z)/100;
+//历史数据分析，看原始值。
+	
+		if(y > max)
+			max = y;
+	}
+	max = max >  2048 ? 2048 : max;
+	max = max <  -2048 ? -2048 : max;
+	reBuf = max;
+}
+
+BOOL CScarData::savePerBlockData(CFile *file, BLOCKHEAD *bHead, int &len, CSampleCard *card, int id)
+{
+	GobalData* g = GobalData::getGobalData();
+	DataBuf* buf = g->getDataBuf();
+	CTime t = CTime::GetCurrentTime();
+	int ch = card->getChannelNum();	
+	int tsum = 0;
+
+	for(int   i = 0; i <  g->MAXCHANNEL; i++)
+	{
+        int len = buf->getdataLens(i);
+		tsum += len;
+	}
+	int datasum = tsum*sizeof(short) +  (g->MAXCHANNEL)*sizeof(int) + sizeof(BLOCKHEAD); //单块总数据量
+    //20通道的len本身int
+	file->Write(&datasum,sizeof(int));  //写入单块总长度
+	//
+	bHead->hour = t.GetHour();
+	bHead->min  = t.GetMinute();
+	bHead->good = g->goodflag;
+	bHead->good2 = g->goodflag2;
+	bHead->blocksum =0;//无意义
+	bHead->id = id;
+	bHead->VendPt = vEndCutTime;
+	bHead->HendPt =hEndCutTime;
+	bHead->XPt[0] = recordXPt[0];
+	bHead->XPt[1] = recordXPt[1];
+	bHead->XPt[2] = recordXPt[2];
+	bHead->XPt[3] = recordXPt[3];
+	bHead->XPt[4] = recordXPt[4];
+	bHead->XPt[5] = recordXPt[5];
+	bHead->XPt[6] = recordXPt[6];
+	bHead->XPt[7] = recordXPt[7];
+	bHead->XPt[8] = recordXPt[8];
+	bHead->XPt[9] = recordXPt[9];
+	bHead->weldNum=indexAlert;
+	bHead->xlength =  buf->getdataLens(8);
+
+	bHead->YPt[0] = recordYPt[0];
+	bHead->YPt[1] = recordYPt[1];
+	bHead->YPt[2] = recordYPt[2];
+	bHead->YPt[3] = recordYPt[3];
+	bHead->YPt[4] = recordYPt[4];
+	bHead->YPt[5] = recordYPt[5];
+	bHead->YPt[6] = recordYPt[6];
+	bHead->YPt[7] = recordYPt[7];
+	bHead->YPt[8] = recordYPt[8];
+	bHead->YPt[9] = recordYPt[9];
+	bHead->weldNum2=indexAlert2;
+	bHead->ylength =  buf->getdataLens(88);
+	file->Write(bHead,sizeof(BLOCKHEAD));
+    //写单块头
+	
+	//写数据
+   	for(     i = 0; i < g->MAXCHANNEL; i++)  //
+	{
+		WORD** data = buf->getDataPtr();
+		int len = buf->getdataLens(i);
+		file->Write(&len,sizeof(int));
+		file->Write(data[i],buf->getdataLens(i)*sizeof(short));
+	}
+
+	file->Write(&datasum,sizeof(int));  //写入单块总长度
+	len = datasum;                      //返回值
+//	file->Flush();
+//	memset(recordXPt,0,10*sizeof(int));
+//	memset(recordYPt,0,10*sizeof(int));
+    return TRUE;
+}
+
+BOOL CScarData::loadPerBlockData(CFile *file, BLOCKHEAD *bHead, int &len)
+{
+	GobalData* g = GobalData::getGobalData();
+	DataBuf* buf = g->getDataBuf();
+
+	int datasum;	
+	file->Read(&datasum,sizeof(int));  //读单块总长度
+	//
+	file->Read(bHead,sizeof(BLOCKHEAD));
+    //读单块头
+	recordXPt[0] =bHead->XPt[0] ;
+	recordXPt[1] =bHead->XPt[1] ;
+	recordXPt[2] =bHead->XPt[2] ;
+	recordXPt[3] =bHead->XPt[3] ;
+	recordXPt[4] =bHead->XPt[4] ;
+	
+	recordYPt[0] =bHead->YPt[0] ;
+	recordYPt[1] =bHead->YPt[1] ;
+	recordYPt[2] =bHead->YPt[2] ;
+	recordYPt[3] =bHead->YPt[3] ;
+	recordYPt[4] =bHead->YPt[4] ;
+	indexAlert= bHead->weldNum;
+	indexAlert2= bHead->weldNum2;
+
+	vEndCutTime= bHead->VendPt;
+	hEndCutTime=bHead->HendPt;
+	//读数据
+    for(int i = 0; i < g->MAXCHANNEL; i++)  //从第0通道开始，根据通道数量读取数据
+	{
+		WORD** data = buf->getDataPtr();
+		short d  = 0;
+		int len = 0;
+	
+		file->Read(&len,sizeof(int));
+		file->Read(data[i],len * sizeof(short));  //各通道数据长度一样
+		buf->setDataLens(i,len);	
+	}
+	
+	file->Read(&datasum,sizeof(int));  //读单块总长度
+	len = datasum;
+	if(bHead->xlength==0 )
+		bHead->xlength = buf->getdataLens(8);
+	if(bHead->ylength==0 )
+		bHead->ylength = buf->getdataLens(88);
+		
+#ifdef AddYcord
+	if( addOrDel )
+		{
+			//检查横向内伤,查看历史没记录的数据
+			if(abs(recordXPt[0] -lastXpt[0])>400 )
+			{
+				recordXPt[0]= lastXpt[0];					
+				xLostpt = TRUE;
+			}
+			else
+				xLostpt = FALSE;
+			if(abs(recordYPt[indexAlert2-1] -lastYpt[2])>400 )
+			{
+				recordYPt[indexAlert2]= lastYpt[2];					
+				YLostpt = TRUE;indexAlert2++;
+			}
+			else
+				YLostpt = FALSE;
+		}
+
+#endif
+   return TRUE;
+}
+
+short CScarData::getSaveNum(DataBuf *buf, int ch, int startNum, int blocklen)
+{
+	int max = 0;
+	short re = 0;
+	short* pars = buf->getParPtr();
+	short* stdline = buf->getStdPtr();
+	WORD** data = buf->getDataPtr();
+	for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+	{
+		int y = (data[ch][i] - stdline[ch]);
+		y = abs(y);
+		if(i == startNum)
+		{
+			max = y;
+			re = data[ch][i];
+		}
+		if(y > max)
+		{
+			max = y;
+			re = data[ch][i];
+		}
+	}
+    return re;
+}
+
+void CScarData::endSampleData()
+{
+
+}
+
+//void CScarData::GetFaultNum(DataBuf *buf, int startch, int chnum, int startNum, int blocklen, int &reBuf)
+//{
+//		int max = 0;
+//		short* pars = buf->getParPtr();
+//		short* stdline = buf->getStdPtr();
+//		short** fault = buf->GetFaultPtr();
+//		max = (fault[startch][startNum] - stdline[startch])*pars[startch]/100;
+//		for(int ch = startch; ch <= startch + chnum; ch++)
+//		{
+//			for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+//			{
+//				int y = (fault[ch][i] - stdline[ch])*pars[ch]/100;
+//				if(i<=3300 && ch <= 16)
+//					y = 0;
+//				if(y > max)
+//					max = y;
+//			}
+//		}
+//		max = max >  2048 ? 2048 : max;
+//		max = max < -2048 ? -2048 : max;
+//		reBuf = max;
+//}
+#if 0
+void CScarData::GetWaveNum(DataBuf *buf, int ch, int startNum, int blocklen, int timelapes, int &reBuf)
+{
+	int max1 = -2048;
+	int max2 = -2048;
+	int max = 0;
+	short* pars = buf->getParPtr();
+	short* stdline = buf->getStdPtr();
+	short** data = buf->getDataPtr();
+	short level = 2048*20/100;
+	
+	reBuf = 0;
+	if( buf->getdataLens(ch) < 	2*blocklen )
+		return;
+
+	if( timelapes > startNum )
+		return ;
+
+	if(ch == 103 || ch == 135 )
+		{
+			double z1 = double(pars[ch])/20; 
+			for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+			{
+				int y1 = (data[ch][i] - stdline[ch])*pow(10,z1)/100;
+				if(y1 > max)			
+					max = y1;
+			}
+			if(max < level)
+				reBuf = max;
+			else
+				reBuf = 0;
+			return ;
+		}
+	
+	double z1 = double(pars[ch])/20; 
+	double z2 = double(pars[ch+1])/20; 
+
+	for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+	{
+		int y1 = (data[ch][i] - stdline[ch])*pow(10,z1)/100;
+		int y2 = (data[ch+1][i] - stdline[ch+1])*pow(10,z2)/100;
+		if(y1 > max1)
+			max1 = y1;
+		if(y2 > max2)
+			max2 = y2;		
+	}
+	if(max1 >= level && max2>= level )
+		{
+			max = (max1+max2)/2;
+		}
+	else
+		{
+			max = max1;
+		}
+	max = max >  2048 ? 2048 : max;
+	max = max <  -2048 ? -2048 : max;
+	reBuf = max;
+} 
+#else
+void CScarData::GetWaveNum(DataBuf *buf, int ch, int startNum, int blocklen, int timelapes, int &reBuf)
+{
+	int max1 = -2048;
+	int max2 = -2048;
+	int max = 0;
+	GobalData* g = GobalData::getGobalData();
+	AUTOSET& set = g->getAutoSet();
+	short level =(2048*set.alertline2[2])/100;// (2048*set.alertline2[2])/100;//过滤门限
+	short* pars = buf->getParPtr();
+	double z = double(pars[ch])/20;
+//纵向两屏的最后一个通道不用重复计算。
+	if( z == 0 ||ch == 103 || ch == 135 )
+		{
+			reBuf = 0;
+			return ;
+		}	
+	
+//	for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+	{
+		GetDifferWaveNum(buf,ch,startNum,blocklen,timelapes,max1);
+		GetDifferWaveNum(buf,ch+1,startNum,blocklen,timelapes,max2);
+	}
+	if(max1 > level && max2> level )
+		{
+			max = (max1+max2);
+		}
+	else
+		{
+			max =  max1 >  max2 ? max2 : max1;
+		}
+	max = max >  2048 ? 2048 : max;
+//	max = max <  -2048 ? -2048 : max;
+	reBuf = max;
+#if 0
+	if( ch >= 71  && vEndCutTime <startNum && vEndCutTime != 0 &&  ch % 8 > 3  )
+	{
+			reBuf =0;
+	}
+#endif
+
+}	
+#endif
+void CScarData::GetWaveNum(DataBuf *buf, int startch, int chnum, int startNum, int blocklen, int timelapes, int &reBuf)
+{
+	
+}
+
+void CScarData::GetMinWaveNum(DataBuf *buf, int startch, int chnum, int startNum, int blocklen, int timelapes, int &reBuf)
+{
+	GobalData* g = GobalData::getGobalData();
+	AUTOSET set = g->getAutoSet();
+	short* pars = buf->getParPtr();
+	short* stdline = buf->getStdPtr();
+	WORD** data = buf->getDataPtr();
+	int y1 = 0,y2 = 0,y3 = 0, y4 = 0;
+	int max = 0;
+//	int headdelay  =  set.alertline3[2];
+	
+	if( timelapes > startNum )
+		{
+			reBuf = 0;
+			return ;
+		}
+
+	for(int ch = startch; ch <= startch + chnum; ch++)
+	{
+#if 1
+		double z = double(pars[ch])/20;
+		for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+		{
+			if (i<2*set.differ[0])
+			{
+				max = 0;
+			}
+			else
+			{				
+				y1 = (data[ch][i] - stdline[ch])*pow(10,z)/100;
+				y2 = (data[ch][i-set.differ[ch/32]] - stdline[ch])*pow(10,z)/100;
+				y3 = (data[ch][i-2*set.differ[ch/32]] - stdline[ch])*pow(10,z)/100;			
+				y4 = y1+y3-2*y2;
+				y4 = abs(y4*set.differadjust[ch/32])/100;
+				if(y4 > max)
+					max = y4;
+			}
+		}
+#endif		//DataBuf *buf, int ch, int startNum, int blocklen, int timelapes, int &reBuf)
+	//	GetWaveNum(buf,ch,startNum,blocklen,timelapes,y4);
+	//	if(y4 > max)	max = y4;
+	}
+	max = max >  2048 ? 2048 : max;
+	max = max < 0 ? 0 : max;
+	reBuf = max;
+#if 1
+	if( ch >= 71  && vEndCutTime <( startNum/* +set.alertline3[3] */) && vEndCutTime != 0 &&  ch % 8 > 3  )
+	{
+			reBuf =0;
+	}
+#endif
+
+
+}
+
+void CScarData::GetAvgWaveNum(DataBuf *buf, int startch, int chnum, int startNum, int blocklen, int timelapes, int &reBuf)
+{
+	int sum = 0;
+	int avg = 0;
+	short* pars = buf->getParPtr();
+	short* stdline = buf->getStdPtr();
+	WORD** data = buf->getDataPtr();
+	
+	for(int ch = startch; ch <= startch + chnum; ch++)
+	{
+		int sum = 0;
+		for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+		{
+			double z = double(pars[ch])/20; 
+			int y = abs(data[ch][i] - stdline[ch])*pow(10,z)/100;
+			sum+= y;
+		}
+		avg += sum/blocklen;
+	}
+	reBuf = avg/(chnum+1);
+}
+
+void CScarData::GetDifferWaveNum(DataBuf *buf, int ch, int startNum, int blocklen, int timelapes, int &reBuf)
+{
+	GobalData* g = GobalData::getGobalData();
+	AUTOSET& set = g->getAutoSet();
+	int max = 0;
+	int y1 = 0,y2 = 0,y3 = 0;
+	int y4 = 0;
+	short* pars = buf->getParPtr();
+	short* stdline = buf->getStdPtr();
+	WORD** data = buf->getDataPtr();
+	int y = 0;
+//	int headdelay  =  set.alertline3[2];//纵向头部，后4通道
+
+	reBuf = 0;
+//	if( buf->getdataLens(ch) < 	2*blocklen )
+//		return;
+
+	if( timelapes > startNum )
+		{
+			return ;
+		}
+	double z = double(pars[ch])/20;
+	for(int i = startNum; i < startNum+blocklen; i++)    //取最大值显示
+	{
+		if (i<2*set.differ[0])
+		{
+			max = 0;
+		}
+		else
+		{	
+			y1 = (data[ch][i] - stdline[ch])*pow(10,z)/100;
+			y2 = (data[ch][i-set.differ[ch/32]] - stdline[ch])*pow(10,z)/100;
+			y3 = (data[ch][i-2*set.differ[ch/32]] - stdline[ch])*pow(10,z)/100;			
+			y4 = y1+y3-2*y2;
+			y4 = abs(y4*set.differadjust[ch/32])/100;
+		/*	if( ch > 70 && i < 5000 && set.alertline3[2] > 0)
+ 			{ 	 				 
+				if( abs(data[ch][i] -stdline[ch]) > 200 )
+					{				
+						if( i < set.alertline3[2] )
+						y4 = y4/10;//+ stdline[ch];
+					}
+			}*/
+
+			if(y4 > max)
+				max = y4;
+		}
+	}
+		
+	max = max >  2048 ? 2048 : max;
+	max = max < 0 ? 0 : max;
+	reBuf = max;
+
+#if 0
+	if( ch >= 71  && (vEndCutTime+set.alertline3[3] )< startNum && vEndCutTime != 0 &&  ch % 8 > 3  )
+	{
+			reBuf =0;
+	}
+#endif
+
+}
